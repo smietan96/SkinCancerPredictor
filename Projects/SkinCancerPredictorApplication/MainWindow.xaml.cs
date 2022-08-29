@@ -9,13 +9,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media.Imaging;
-//using static SkinCancerPredictor.MLModel1;
+using static SkinCancerPredictorApplication.MLModel1;
 
 namespace SkinCancerPredictor
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
     public partial class MainWindow : Window
     {
         public static readonly DependencyProperty ImageLoadedProperty =
@@ -24,6 +21,7 @@ namespace SkinCancerPredictor
         public static readonly DependencyProperty ImageNotLoadedProperty =
             DependencyProperty.Register("ImageNotLoaded", typeof(bool), typeof(MainWindow), new PropertyMetadata(true));
 
+        private Color DistortionColor = Color.White;
         private int[] AvailableDistortionPercentages = new int[] { 5, 10, 15, 20, 30, 40, 50 };
         private bool ImageDistorted;
 
@@ -120,21 +118,21 @@ namespace SkinCancerPredictor
                         encoder.Save(stream);
                     }
 
-                    //ModelInput data = new ModelInput()
-                    //{
-                    //    ImageSource = tempFileDirectory,
-                    //};
+                    ModelInput data = new ModelInput()
+                    {
+                        ImageSource = tempFileDirectory,
+                    };
 
                     Mouse.OverrideCursor = Cursors.Wait;
-                    //ModelOutput predictionResult = Predict(data);
+                    ModelOutput predictionResult = Predict(data);
                     Mouse.OverrideCursor = Cursors.Arrow;
 
-                    //Dictionary<DiagnoseCode, decimal> scoresWithLabels = GetScoresWithLabels(predictionResult);
-                    //ShowPredictLabelsScores(scoresWithLabels, predictionResult.Prediction);
+                    Dictionary<DiagnoseCode, decimal> scoresWithLabels = GetScoresWithLabels(predictionResult);
+                    ShowPredictLabelsScores(scoresWithLabels, predictionResult.Prediction);
                 }
                 else
                 {
-                    //PredictFile(lblImageUrl.Content?.ToString());
+                    PredictFile(lblImageUrl.Content?.ToString());
                 }
             }
             catch (Exception ex)
@@ -151,25 +149,25 @@ namespace SkinCancerPredictor
             }
         }
 
-        //private void PredictFile(string? filePath)
-        //{
-        //    if (string.IsNullOrEmpty(filePath) || imgInput.Source == null)
-        //    {
-        //        return;
-        //    }
+        private void PredictFile(string? filePath)
+        {
+            if (string.IsNullOrEmpty(filePath) || imgInput.Source == null)
+            {
+                return;
+            }
 
-        //    ModelInput data = new ModelInput()
-        //    {
-        //        ImageSource = filePath,
-        //    };
+            ModelInput data = new ModelInput()
+            {
+                ImageSource = filePath,
+            };
 
-        //    Mouse.OverrideCursor = Cursors.Wait;
-        //    ModelOutput predictionResult = Predict(data);
-        //    Mouse.OverrideCursor = Cursors.Arrow;
+            Mouse.OverrideCursor = Cursors.Wait;
+            ModelOutput predictionResult = Predict(data);
+            Mouse.OverrideCursor = Cursors.Arrow;
 
-        //    Dictionary<DiagnoseCode, decimal> scoresWithLabels = GetScoresWithLabels(predictionResult);
-        //    ShowPredictLabelsScores(scoresWithLabels, predictionResult.Prediction);
-        //}
+            Dictionary<DiagnoseCode, decimal> scoresWithLabels = GetScoresWithLabels(predictionResult);
+            ShowPredictLabelsScores(scoresWithLabels, predictionResult.Prediction);
+        }
 
         private void ResetPredictLabels()
         {
@@ -244,7 +242,7 @@ namespace SkinCancerPredictor
             {
                 using (Bitmap sourceBtm = new Bitmap(lblImageUrl.Content?.ToString()))
                 {
-                    Bitmap distortedBtm = GetDistortedBitmap(sourceBtm, distPercent);
+                    Bitmap distortedBtm = GetDistortedBitmap(sourceBtm, distPercent, DistortionColor);
                     ResetPredictLabels();
                     imgInput.Source = BitmapToImageSource(distortedBtm);
                     ImageDistorted = true;
@@ -273,13 +271,13 @@ namespace SkinCancerPredictor
             }
         }
 
-        private Bitmap GetDistortedBitmap(Bitmap scrBitmap, int distPercentage)
+        private Bitmap GetDistortedBitmap(Bitmap scrBitmap, int distPercentage, Color distortionColor)
         {
             if (distPercentage <= 0 || distPercentage > 100)
             {
                 throw new Exception("Invalid percentage value");
             }
-            Color newColor = Color.Red;
+
             int width = scrBitmap.Width;
             int height = scrBitmap.Height;
             Bitmap newBitmap = new Bitmap(scrBitmap);
@@ -287,10 +285,10 @@ namespace SkinCancerPredictor
 
             for (int i = 0; i < width * height * ((double)distPercentage / 100); i++)
             {
-                Color randomPixel = newColor;
+                Color randomPixel = distortionColor;
                 int x = -1;
                 int y = -1;
-                while (randomPixel == newColor)
+                while (randomPixel == distortionColor)
                 {
                     x = rand.Next(width);
                     y = rand.Next(height);
@@ -299,7 +297,7 @@ namespace SkinCancerPredictor
 
                 if (x > -1 && y > -1)
                 {
-                    newBitmap.SetPixel(x, y, newColor);
+                    newBitmap.SetPixel(x, y, distortionColor);
                 }
             }
 

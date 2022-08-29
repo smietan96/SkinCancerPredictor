@@ -42,7 +42,8 @@ namespace DatasetOrganizer
                 {
                     List<Lesion> lesionsToProcess = lesions.Where(x => x.DiagnoseCode == diagnose).ToList();
                     SplitLesionImages(lesionsToProcess);
-                    ExtractTrainTestSets(diagnose, ImagesToTrainCount, ImagesToTestCount);
+                    //ExtractTrainTestSets(diagnose, ImagesToTrainCount, ImagesToTestCount);
+                    ExtractTrainTestSets(diagnose, 0.1);
                 }
             }
             catch (Exception ex)
@@ -52,6 +53,91 @@ namespace DatasetOrganizer
 
             Console.WriteLine("DataSetOrganizer finished");
             Console.ReadKey();
+        }
+
+        private static void ExtractTrainTestSets(DiagnoseCode code, double testFraction)
+        {
+            if (testFraction <= 0 || testFraction >= 1)
+            {
+                throw new Exception($"Invalid {nameof(testFraction)}");
+            }
+
+            string diagnoseAllDir = Path.Combine(Configuration.BasePath, Configuration.AllImagesDir, code.ToString());
+            string diagnoseTrainDir = Path.Combine(Configuration.BasePath, Configuration.TrainImagesDir, code.ToString());
+            string diagnoseTestDir = Path.Combine(Configuration.BasePath, Configuration.TestImagesDir, code.ToString());
+
+            DirectoryInfo directoryInfoAll = new DirectoryInfo(diagnoseAllDir);
+            DirectoryInfo directoryInfoTrain = new DirectoryInfo(diagnoseTrainDir);
+            DirectoryInfo directoryInfoTest = new DirectoryInfo(diagnoseTestDir);
+
+            try
+            {
+                FileInfo[] files = directoryInfoAll.GetFiles();
+
+                int testFilesCount = (int)(testFraction * files.Length);
+                int trainFilesCount = files.Length - testFilesCount;
+
+                if (trainFilesCount > files.Length)
+                {
+                    trainFilesCount = files.Length - testFilesCount;
+                }
+
+                Random random = new Random();
+                List<FileInfo> filesToTrain = new List<FileInfo>();
+                List<FileInfo> filesToTest = new List<FileInfo>();
+
+                while (filesToTrain.Count < trainFilesCount)
+                {
+                    int fileIndex = random.Next(files.Length);
+                    FileInfo file = files[fileIndex];
+
+                    if (!filesToTrain.Contains(file))
+                    {
+                        filesToTrain.Add(file);
+                    }
+                }
+
+                while (filesToTest.Count < testFilesCount)
+                {
+                    int fileIndex = random.Next(files.Length);
+                    FileInfo file = files[fileIndex];
+
+                    if (!filesToTest.Contains(file) && !filesToTrain.Contains(file))
+                    {
+                        filesToTest.Add(file);
+                    }
+                }
+
+                if (!Directory.Exists(diagnoseTrainDir))
+                {
+                    Directory.CreateDirectory(diagnoseTrainDir);
+                }
+
+                if (!Directory.Exists(diagnoseTestDir))
+                {
+                    Directory.CreateDirectory(diagnoseTestDir);
+                }
+
+                DeleteExistingFiles(directoryInfoTrain);
+                DeleteExistingFiles(directoryInfoTest);
+
+                CopyFiles(filesToTrain, diagnoseTrainDir);
+                CopyFiles(filesToTest, diagnoseTestDir);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+
+                if (Directory.Exists(diagnoseTrainDir))
+                {
+                    Directory.Delete(diagnoseTrainDir, true);
+                }
+
+                if (Directory.Exists(diagnoseTestDir))
+                {
+                    Directory.Delete(diagnoseTestDir, true);
+                }
+            }
         }
 
         private static MetadataFileSettings InitMetadataFileSettings()
