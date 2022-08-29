@@ -21,7 +21,7 @@ namespace SkinCancerPredictor
         public static readonly DependencyProperty ImageNotLoadedProperty =
             DependencyProperty.Register("ImageNotLoaded", typeof(bool), typeof(MainWindow), new PropertyMetadata(true));
 
-        private Color DistortionColor = Color.White;
+        private Color? DistortionColor;
         private int[] AvailableDistortionPercentages = new int[] { 5, 10, 15, 20, 30, 40, 50 };
         private bool ImageDistorted;
 
@@ -80,6 +80,8 @@ namespace SkinCancerPredictor
                 ImageDistorted = false;
                 ImageLoaded = true;
                 ImageNotLoaded = false;
+                cpDistortionColor.SelectedColor = null;
+                DistortionColor = null;
             }
         }
 
@@ -96,6 +98,8 @@ namespace SkinCancerPredictor
             imgInput.Source = null;
             lblImageUrl.Content = string.Empty;
             cbDistPercent.SelectedIndex = -1;
+            cpDistortionColor.SelectedColor = null;
+            DistortionColor = null;
             ResetPredictLabels();
         }
 
@@ -228,11 +232,46 @@ namespace SkinCancerPredictor
             }
         }
 
+        private void btnClearDis_Click(object sender, RoutedEventArgs e)
+        {
+            if (ImageDistorted)
+            {
+                try
+                {
+                    ResetPredictLabels();
+                    string selectedFileName = lblImageUrl.Content?.ToString();
+                    BitmapImage bitmap = new BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.UriSource = new Uri(selectedFileName);
+                    bitmap.EndInit();
+
+                    imgInput.Source = bitmap;
+                    lblImageUrl.Content = selectedFileName;
+                    cbDistPercent.SelectedIndex = -1;
+                    ImageDistorted = false;
+                    ImageLoaded = true;
+                    ImageNotLoaded = false;
+                    cpDistortionColor.SelectedColor = null;
+                    DistortionColor = null;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message);
+                }
+            }
+        }
+
         private void btnDistort_Click(object sender, RoutedEventArgs e)
         {
             if (cbDistPercent.SelectedIndex <= -1)
             {
                 MessageBox.Show("Select distortion percentage");
+                return;
+            }
+
+            if (DistortionColor == null)
+            {
+                MessageBox.Show("Select distortion color");
                 return;
             }
 
@@ -271,11 +310,16 @@ namespace SkinCancerPredictor
             }
         }
 
-        private Bitmap GetDistortedBitmap(Bitmap scrBitmap, int distPercentage, Color distortionColor)
+        private Bitmap GetDistortedBitmap(Bitmap scrBitmap, int distPercentage, Color? distortionColor)
         {
             if (distPercentage <= 0 || distPercentage > 100)
             {
                 throw new Exception("Invalid percentage value");
+            }
+
+            if (distortionColor == null)
+            {
+                throw new ArgumentNullException(nameof(distortionColor));
             }
 
             int width = scrBitmap.Width;
@@ -285,7 +329,7 @@ namespace SkinCancerPredictor
 
             for (int i = 0; i < width * height * ((double)distPercentage / 100); i++)
             {
-                Color randomPixel = distortionColor;
+                Color randomPixel = distortionColor.Value;
                 int x = -1;
                 int y = -1;
                 while (randomPixel == distortionColor)
@@ -297,12 +341,24 @@ namespace SkinCancerPredictor
 
                 if (x > -1 && y > -1)
                 {
-                    newBitmap.SetPixel(x, y, distortionColor);
+                    newBitmap.SetPixel(x, y, distortionColor.Value);
                 }
             }
 
             scrBitmap.Dispose();
             return newBitmap;
+        }
+
+        private void cpDistortionColor_SelectedColorChanged(object sender, RoutedPropertyChangedEventArgs<System.Windows.Media.Color?> e)
+        {
+            if (cpDistortionColor.SelectedColor != null)
+            {
+                byte a = cpDistortionColor.SelectedColor.Value.A;
+                byte r = cpDistortionColor.SelectedColor.Value.R;
+                byte g = cpDistortionColor.SelectedColor.Value.G;
+                byte b = cpDistortionColor.SelectedColor.Value.B;
+                DistortionColor = Color.FromArgb(a, r, g, b);
+            }
         }
     }
 }
