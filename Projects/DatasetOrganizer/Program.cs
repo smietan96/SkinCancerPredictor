@@ -8,6 +8,8 @@ namespace DatasetOrganizer
     {
         private static Configuration Configuration;
         private static MetadataFileSettings Settings;
+
+        private static double TestFraction = 0.1;
         private static List<DiagnoseCode> DiagnosesToProcess = new List<DiagnoseCode>()
         {
             DiagnoseCode.bcc,
@@ -33,14 +35,15 @@ namespace DatasetOrganizer
                     throw new Exception("Metadata file path null or empty");
                 }
 
-                List<Lesion> lesions = GetLesions(metaDataFilePath);
+                List<Lesion> allLesions = GetLesions(metaDataFilePath);
+                List<Lesion>? lesions = allLesions?.Where(x => DiagnosesToProcess.Contains(x.DiagnoseCode)).ToList();
 
-                foreach (DiagnoseCode diagnose in DiagnosesToProcess)
+                if (lesions == null || lesions.Count == 0)
                 {
-                    List<Lesion> lesionsToProcess = lesions.Where(x => x.DiagnoseCode == diagnose).ToList();
-                    SplitLesionImages(lesionsToProcess);
-                    ExtractTrainTestSets(diagnose, 0.1);
+                    throw new Exception($"Null or empty {nameof(lesions)}");
                 }
+
+                ExtractTrainTestSets(lesions, TestFraction);
             }
             catch (Exception ex)
             {
@@ -57,12 +60,10 @@ namespace DatasetOrganizer
             string metadataFilePath = ConfigurationManager.AppSettings["metadataFilePath"];
             string sourceImagesPath1 = ConfigurationManager.AppSettings["sourceImagesPath1"];
             string sourceImagesPath2 = ConfigurationManager.AppSettings["sourceImagesPath2"];
-            string allImgDir = ConfigurationManager.AppSettings["allImgDir"];
             string trainImgDir = ConfigurationManager.AppSettings["trainImgDir"];
             string testImgDir = ConfigurationManager.AppSettings["testImgDir"];
 
-            return new Configuration(basePath, metadataFilePath, sourceImagesPath1, sourceImagesPath2,
-                allImgDir, trainImgDir, testImgDir);
+            return new Configuration(basePath, metadataFilePath, sourceImagesPath1, sourceImagesPath2, trainImgDir, testImgDir);
         }
 
         private static MetadataFileSettings InitMetadataFileSettings()
@@ -188,161 +189,109 @@ namespace DatasetOrganizer
             return dt;
         }
 
-        private static void SplitLesionImages(List<Lesion> lesions)
+        private static void ExtractTrainTestSets(List<Lesion> lesions, double testFraction)
         {
             if (lesions == null || lesions.Count == 0)
             {
                 return;
             }
 
-            int count = 0;
-            int max = lesions.Count;
-            List<IGrouping<DiagnoseCode, Lesion>> lesionsGrouped = lesions.GroupBy(x => x.DiagnoseCode).ToList();
-            string allImagesDir = Path.Combine(Configuration.BasePath, Configuration.AllImagesDir);
-
-            try
-            {
-                Console.WriteLine($"Performing {nameof(SplitLesionImages)}... ");
-                using (ProgressBar progress = new ProgressBar())
-                {
-                    foreach (IGrouping<DiagnoseCode, Lesion> group in lesionsGrouped)
-                    {
-                        Console.WriteLine($"Lesion diagnose: {group.Key.ToString()}");
-                        string outputDirectory = Path.Combine(allImagesDir, group.Key.ToString());
-
-                        if (!Directory.Exists(outputDirectory))
-                        {
-                            Directory.CreateDirectory(outputDirectory);
-                        }
-
-                        if (Directory.GetFiles(outputDirectory).Any())
-                        {
-                            Console.WriteLine($"There are already files in {outputDirectory}");
-                            continue;
-                        }
-
-                        foreach (Lesion lesion in group.ToList())
-                        {
-                            try
-                            {
-                                count++;
-                                string outputFilePath = Path.Combine(outputDirectory, $"{lesion.IdImage}.jpg");
-                                File.Copy(lesion.FilePath, outputFilePath);
-                                progress.Report((double)count / max);
-                            }
-                            catch (Exception ex)
-                            {
-                                Console.WriteLine($"Error while copying file {lesion.FilePath}. Message: {ex.Message}");
-                                continue;
-                            }
-                        }
-                    }
-                }
-                Console.WriteLine("Done.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine(ex.Message);
-
-                foreach (IGrouping<DiagnoseCode, Lesion> group in lesionsGrouped)
-                {
-                    string outputDirectory = Path.Combine(allImagesDir, group.Key.ToString());
-
-                    if (Directory.Exists(outputDirectory))
-                    {
-                        Directory.Delete(outputDirectory, true);
-                    }
-                }
-            }
-        }
-
-        private static void ExtractTrainTestSets(DiagnoseCode code, double testFraction)
-        {
             if (testFraction <= 0 || testFraction >= 1)
             {
                 throw new Exception($"Invalid {nameof(testFraction)}");
             }
 
-            string diagnoseAllDir = Path.Combine(Configuration.BasePath, Configuration.AllImagesDir, code.ToString());
-            string diagnoseTrainDir = Path.Combine(Configuration.BasePath, Configuration.TrainImagesDir, code.ToString());
-            string diagnoseTestDir = Path.Combine(Configuration.BasePath, Configuration.TestImagesDir, code.ToString());
+            string trainDirPath = Path.Combine(Configuration.BasePath, Configuration.TrainImagesDir);
+            string testDirPath = Path.Combine(Configuration.BasePath, Configuration.TestImagesDir);
 
-            DirectoryInfo directoryInfoAll = new DirectoryInfo(diagnoseAllDir);
-            DirectoryInfo directoryInfoTrain = new DirectoryInfo(diagnoseTrainDir);
-            DirectoryInfo directoryInfoTest = new DirectoryInfo(diagnoseTestDir);
+            List<IGrouping<DiagnoseCode, Lesion>> lesionsGroupedByDiagnoseCode = lesions.GroupBy(x => x.DiagnoseCode).ToList();
 
             try
             {
-                FileInfo[] files = directoryInfoAll.GetFiles();
-
-                int testFilesCount = (int)(testFraction * files.Length);
-                int trainFilesCount = files.Length - testFilesCount;
-
-                Random random = new Random();
-                List<FileInfo> filesToTrain = new List<FileInfo>();
-                List<FileInfo> filesToTest = new List<FileInfo>();
-
-                while (filesToTrain.Count < trainFilesCount)
+                foreach (IGrouping<DiagnoseCode, Lesion> diagnoseCodeGroup in lesionsGroupedByDiagnoseCode)
                 {
-                    int fileIndex = random.Next(files.Length);
-                    FileInfo file = files[fileIndex];
+                    Console.WriteLine($"Performing {nameof(ExtractTrainTestSets)} for category: {diagnoseCodeGroup.Key}");
+                    string subDirName = diagnoseCodeGroup.Key.ToString();
+                    string subTrainDirPath = Path.Combine(trainDirPath, subDirName);
+                    string subTestDirPath = Path.Combine(testDirPath, subDirName);
+                    List<Lesion> diagnoseCodeLesions = diagnoseCodeGroup.ToList();
 
-                    if (!filesToTrain.Contains(file))
+                    List<FileInfo> files = new List<FileInfo>();
+                    diagnoseCodeLesions.ForEach(x => files.Add(new FileInfo(x.FilePath)));
+
+                    int testFilesCount = (int)(testFraction * diagnoseCodeLesions.Count);
+                    int trainFilesCount = diagnoseCodeLesions.Count - testFilesCount;
+
+                    Random random = new Random();
+                    List<FileInfo> filesToTrain = new List<FileInfo>();
+                    List<FileInfo> filesToTest = new List<FileInfo>();
+
+                    while (filesToTrain.Count < trainFilesCount)
                     {
-                        filesToTrain.Add(file);
+                        int fileIndex = random.Next(files.Count);
+                        FileInfo file = files[fileIndex];
+
+                        if (!filesToTrain.Contains(file))
+                        {
+                            filesToTrain.Add(file);
+                        }
                     }
-                }
 
-                while (filesToTest.Count < testFilesCount)
-                {
-                    int fileIndex = random.Next(files.Length);
-                    FileInfo file = files[fileIndex];
-
-                    if (!filesToTest.Contains(file) && !filesToTrain.Contains(file))
+                    while (filesToTest.Count < testFilesCount)
                     {
-                        filesToTest.Add(file);
+                        int fileIndex = random.Next(files.Count);
+                        FileInfo file = files[fileIndex];
+
+                        if (!filesToTest.Contains(file) && !filesToTrain.Contains(file))
+                        {
+                            filesToTest.Add(file);
+                        }
                     }
+
+                    if (!Directory.Exists(subTrainDirPath))
+                    {
+                        Directory.CreateDirectory(subTrainDirPath);
+                    }
+
+                    if (!Directory.Exists(subTestDirPath))
+                    {
+                        Directory.CreateDirectory(subTestDirPath);
+                    }
+
+                    //breakpoint on any to check for duplicates
+                    bool testDuplicates = filesToTest.Count != filesToTest.DistinctBy(x => x.Name).ToList().Count;
+                    bool trainDuplicates = filesToTrain.Count != filesToTrain.DistinctBy(x => x.Name).ToList().Count;
+                    bool testTrainDuplicates = filesToTrain.Any(x => filesToTest.Select(y => y.Name).ToArray().Contains(x.Name));
+
+                    DeleteExistingFiles(new DirectoryInfo(subTrainDirPath));
+                    DeleteExistingFiles(new DirectoryInfo(subTestDirPath));
+
+                    CopyFiles(filesToTrain, subTrainDirPath);
+                    CopyFiles(filesToTest, subTestDirPath);
                 }
-
-                if (!Directory.Exists(diagnoseTrainDir))
-                {
-                    Directory.CreateDirectory(diagnoseTrainDir);
-                }
-
-                if (!Directory.Exists(diagnoseTestDir))
-                {
-                    Directory.CreateDirectory(diagnoseTestDir);
-                }
-
-                DeleteExistingFiles(directoryInfoTrain);
-                DeleteExistingFiles(directoryInfoTest);
-
-                CopyFiles(filesToTrain, diagnoseTrainDir);
-                CopyFiles(filesToTest, diagnoseTestDir);
             }
             catch (Exception ex)
             {
                 Console.WriteLine(ex.Message);
 
-                if (Directory.Exists(diagnoseTrainDir))
+                if (Directory.Exists(trainDirPath))
                 {
-                    Directory.Delete(diagnoseTrainDir, true);
+                    Directory.Delete(trainDirPath, true);
                 }
 
-                if (Directory.Exists(diagnoseTestDir))
+                if (Directory.Exists(testDirPath))
                 {
-                    Directory.Delete(diagnoseTestDir, true);
+                    Directory.Delete(testDirPath, true);
                 }
             }
         }
 
         private static void CopyFiles(List<FileInfo> files, string diagnoseOutputDir)
         {
-            string sourceDir = files.First().DirectoryName;
             int count = 0;
             int max = files.Count;
 
-            Console.WriteLine($"Performing {nameof(CopyFiles)} from '{sourceDir}' to '{diagnoseOutputDir}'...");
+            Console.WriteLine($"Performing {nameof(CopyFiles)} to '{diagnoseOutputDir}'...");
             using (ProgressBar progress = new ProgressBar())
             {
                 foreach (FileInfo file in files)
@@ -353,7 +302,7 @@ namespace DatasetOrganizer
                     progress.Report((double)count / max);
                 }
             }
-            Console.WriteLine($"Copied {files.Count} files from '{sourceDir}' to '{diagnoseOutputDir}'");
+            Console.WriteLine($"Copied {files.Count} files to '{diagnoseOutputDir}'");
         }
 
         private static void DeleteExistingFiles(DirectoryInfo di)
