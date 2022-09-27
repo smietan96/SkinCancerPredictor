@@ -106,6 +106,7 @@ namespace SkinCancerPredictor
         private void btnPredict_Click(object sender, RoutedEventArgs e)
         {
             string tempDirectory = string.Empty;
+            string imageSource = string.Empty;
             try
             {
                 if (ImageDistorted)
@@ -122,22 +123,19 @@ namespace SkinCancerPredictor
                         encoder.Save(stream);
                     }
 
-                    ModelInput data = new ModelInput()
-                    {
-                        ImageSource = tempFileDirectory,
-                    };
-
-                    Mouse.OverrideCursor = Cursors.Wait;
-                    ModelOutput predictionResult = Predict(data);
-                    Mouse.OverrideCursor = Cursors.Arrow;
-
-                    Dictionary<DiagnoseCode, decimal> scoresWithLabels = GetScoresWithLabels(predictionResult);
-                    ShowPredictLabelsScores(scoresWithLabels, predictionResult.Prediction);
+                    imageSource = tempFileDirectory;
                 }
                 else
                 {
-                    PredictFile(lblImageUrl.Content?.ToString());
+                    imageSource = lblImageUrl.Content?.ToString();
                 }
+
+                if (string.IsNullOrEmpty(imageSource))
+                {
+                    throw new ArgumentNullException(imageSource);
+                }
+
+                PredictFile(imageSource);
             }
             catch (Exception ex)
             {
@@ -310,7 +308,7 @@ namespace SkinCancerPredictor
             }
         }
 
-        private Bitmap GetDistortedBitmap(Bitmap scrBitmap, int distPercentage, Color? distortionColor)
+        private Bitmap GetDistortedBitmap(Bitmap srcBitmap, int distPercentage, Color? distortionColor)
         {
             if (distPercentage <= 0 || distPercentage > 100)
             {
@@ -322,9 +320,9 @@ namespace SkinCancerPredictor
                 throw new ArgumentNullException(nameof(distortionColor));
             }
 
-            int width = scrBitmap.Width;
-            int height = scrBitmap.Height;
-            Bitmap newBitmap = new Bitmap(scrBitmap);
+            int width = srcBitmap.Width;
+            int height = srcBitmap.Height;
+            Bitmap newBitmap = new Bitmap(srcBitmap);
             Random rand = new Random();
 
             for (int i = 0; i < width * height * ((double)distPercentage / 100); i++)
@@ -336,7 +334,7 @@ namespace SkinCancerPredictor
                 {
                     x = rand.Next(width);
                     y = rand.Next(height);
-                    randomPixel = scrBitmap.GetPixel(x, y);
+                    randomPixel = srcBitmap.GetPixel(x, y);
                 }
 
                 if (x > -1 && y > -1)
@@ -345,7 +343,7 @@ namespace SkinCancerPredictor
                 }
             }
 
-            scrBitmap.Dispose();
+            srcBitmap.Dispose();
             return newBitmap;
         }
 

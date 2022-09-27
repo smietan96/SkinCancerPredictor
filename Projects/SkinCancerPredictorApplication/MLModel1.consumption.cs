@@ -58,10 +58,11 @@ namespace SkinCancerPredictorApplication
         {
             VBuffer<ReadOnlyMemory<char>> labelBuffer = new VBuffer<ReadOnlyMemory<char>>();
             PredictEngine.Value.OutputSchema["Score"].Annotations.GetValue("SlotNames", ref labelBuffer);
-            string[] labels = labelBuffer.DenseValues().Select(l => l.ToString()).ToArray();
-            int index = Array.IndexOf(labels, modelOutput.Prediction);
-            float score = modelOutput.Score[index];
-            return labels.ToDictionary(l => l, l => (decimal)modelOutput.Score[Array.IndexOf(labels, l)]).OrderByDescending(kv => kv.Value).ToDictionary(x => (Enums.DiagnoseCode)Enum.Parse(typeof(Enums.DiagnoseCode), x.Key, true), x => x.Value);
+            Enums.DiagnoseCode[] labels = labelBuffer.DenseValues().Select(x => (Enums.DiagnoseCode)Enum.Parse(typeof(Enums.DiagnoseCode), x.ToString())).ToArray();
+
+            return labels.ToDictionary(x => x, y => (decimal)modelOutput.Score[Array.IndexOf(labels, y)])
+                .OrderByDescending(x => x.Value)
+                .ToDictionary(x => x.Key, y => y.Value);
         }
 
         private static PredictionEngine<ModelInput, ModelOutput> CreatePredictEngine()
